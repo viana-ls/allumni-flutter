@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+import 'noticia_detalhe.dart';
 import 'app_image.dart';
 import 'admin.dart';
 import 'dart:convert';
@@ -286,7 +288,23 @@ class _AuthPageState extends State<AuthPage> {
   bool register = false;
   bool busy = false;
   bool obscurePassword = true;
+  DateTime? _lastBackPress;
 
+  bool _handleBack() {
+    final now = DateTime.now();
+    if (_lastBackPress == null || now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+      _lastBackPress = now;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pressione voltar novamente para sair'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
   Future<void> submit() async {
     if (email.text.trim().isEmpty || password.text.isEmpty) {
       showError(context, 'Preencha o e-mail e a senha.');
@@ -322,74 +340,60 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.school_rounded, size: 74, color: Color(0xff123c73)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Allumni',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const Text('A comunidade de ex-alunos', textAlign: TextAlign.center),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.green.shade200),
+  Widget build(BuildContext context) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          if (_handleBack()) SystemNavigator.pop();
+        },
+        child: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(Icons.school_rounded, size: 74, color: Color(0xff123c73)),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Allumni',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.cloud_done, size: 16, color: Colors.green.shade700),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Firebase Cloud Firestore Conectado',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade800),
-                          ),
-                        ],
+                      const Text('A comunidade de ex-alunos', textAlign: TextAlign.center),
+                      const SizedBox(height: 24),
+                      if (register) ...[
+                        field(name, 'Nome completo'),
+                        field(course, 'Curso'),
+                        field(year, 'Ano de formatura', type: TextInputType.number),
+                      ],
+                      field(email, 'E-mail', type: TextInputType.emailAddress),
+                      field(
+                        password,
+                        'Senha',
+                        obscure: obscurePassword,
+                        suffix: IconButton(
+                          icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    if (register) ...[
-                      field(name, 'Nome completo'),
-                      field(course, 'Curso'),
-                      field(year, 'Ano de formatura', type: TextInputType.number),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: busy ? null : submit,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(busy ? 'Entrando...' : register ? 'Criar conta' : 'Entrar'),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() => register = !register),
+                        child: Text(register ? 'Já tenho uma conta' : 'Criar minha conta'),
+                      ),
                     ],
-                    field(email, 'E-mail', type: TextInputType.emailAddress),
-                    field(
-                      password,
-                      'Senha',
-                      obscure: obscurePassword,
-                      suffix: IconButton(
-                        icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => obscurePassword = !obscurePassword),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton(
-                      onPressed: busy ? null : submit,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(busy ? 'Conectando ao Firebase...' : register ? 'Criar conta' : 'Entrar'),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => register = !register),
-                      child: Text(register ? 'Já tenho uma conta' : 'Criar minha conta'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -438,6 +442,7 @@ class ShellPage extends StatefulWidget {
 
 class _ShellPageState extends State<ShellPage> {
   int index = 0;
+  DateTime? _lastBackPress;
 
   @override
   Widget build(BuildContext context) {
@@ -449,41 +454,55 @@ class _ShellPageState extends State<ShellPage> {
       ProfileTab(user: widget.user, onLogout: widget.onLogout),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Allumni'),
-        centerTitle: false,
-        actions: [
-          if (isAdmin(widget.user))
-            IconButton(
-              tooltip: 'Painel do administrador',
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => AdminPage(user: widget.user)),
-              ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (index != 0) {
+          setState(() => index = 0);
+          return;
+        }
+        final now = DateTime.now();
+        if (_lastBackPress == null || now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+          _lastBackPress = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pressione voltar novamente para sair'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
             ),
-          IconButton(
-            tooltip: 'Firebase Conectado',
-            icon: const Icon(Icons.cloud_done_rounded, color: Colors.green),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Conectado remotamente ao Cloud Firestore (alumni-d1a49).')),
-              );
-            },
-          ),
-        ],
-      ),
-      body: pages[index],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (v) => setState(() => index = v),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Início'),
-          NavigationDestination(icon: Icon(Icons.work_outline), selectedIcon: Icon(Icons.work), label: 'Vagas'),
-          NavigationDestination(icon: Icon(Icons.event_outlined), selectedIcon: Icon(Icons.event), label: 'Eventos'),
-          NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Grupos'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
-        ],
+          );
+          return;
+        }
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Allumni'),
+          centerTitle: false,
+          actions: [
+            if (isAdmin(widget.user))
+              IconButton(
+                tooltip: 'Painel do administrador',
+                icon: const Icon(Icons.admin_panel_settings_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => AdminPage(user: widget.user)),
+                ),
+              ),
+          ],
+        ),
+        body: pages[index],
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: index,
+          onDestinationSelected: (v) => setState(() => index = v),
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Início'),
+            NavigationDestination(icon: Icon(Icons.work_outline), selectedIcon: Icon(Icons.work), label: 'Vagas'),
+            NavigationDestination(icon: Icon(Icons.event_outlined), selectedIcon: Icon(Icons.event), label: 'Eventos'),
+            NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Grupos'),
+            NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Perfil'),
+          ],
+        ),
       ),
     );
   }
@@ -500,7 +519,7 @@ class HomeTab extends StatelessWidget {
           Text('Olá, ${user['nome'] ?? 'ex-aluno'}!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text('Sua comunidade, eventos e oportunidades em tempo real com Firebase.'),
+          const Text('Sua comunidade, eventos e oportunidades em tempo real.'),
           const SizedBox(height: 20),
           FirestoreStreamList(
             title: 'Notícias',
@@ -508,6 +527,7 @@ class HomeTab extends StatelessWidget {
             empty: 'Nenhuma notícia publicada ainda.',
             builder: (x) => NewsCard(
               news: x,
+              user: user,
               onEdit: isAdmin(user)
                   ? () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
@@ -515,13 +535,40 @@ class HomeTab extends StatelessWidget {
                         ),
                       )
                   : null,
+              onDelete: isAdmin(user)
+                  ? () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Excluir notícia?'),
+                          content: Text('"${x['titulo'] ?? ''}" será excluída definitivamente.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Excluir'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (ok != true) return;
+                      try {
+                        await FirebaseDb.excluirItem('noticias', x['id']);
+                        messenger.showSnackBar(const SnackBar(content: Text('Notícia excluída com sucesso.')));
+                      } catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+                      }
+                    }
+                  : null,
             ),
           ),
           const SizedBox(height: 20),
           FirestoreStreamList(
             title: 'Próximos eventos',
             stream: FirebaseDb.streamEventos(),
-            empty: 'Nenhum evento cadastrado no Firestore.',
+            empty: 'Nenhum evento disponível no momento.',
             builder: (x) => EventCard(event: x),
           ),
         ],
@@ -549,10 +596,10 @@ class FirestoreStreamList extends StatelessWidget {
             return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
           }
           if (snap.hasError) {
-            return Card(
+            return const Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('Erro no Firestore: ${snap.error}'),
+                padding: EdgeInsets.all(16),
+                child: Text('Erro ao carregar dados. Verifique sua conexão.'),
               ),
             );
           }
@@ -629,7 +676,7 @@ class _JobCardState extends State<JobCard> {
                       if (!mounted) return;
                       setState(() => applied = true);
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Candidatura gravada no Firestore com sucesso!')),
+                        const SnackBar(content: Text('Candidatura enviada com sucesso!')),
                       );
                     } catch (e) {
                       if (!mounted) return;
@@ -689,17 +736,30 @@ String firstText(List<dynamic> values) {
 }
 
 class NewsCard extends StatelessWidget {
-  const NewsCard({super.key, required this.news, this.onEdit});
-  final Map<String, dynamic> news;
+  const NewsCard({
+    super.key,
+    required this.news,
+    this.user,
+    this.onEdit,
+    this.onDelete,
+  });
 
-  /// Presente apenas para admins: mostra o botão "Editar notícia".
+  final Map<String, dynamic> news;
+  final Map<String, dynamic>? user;
   final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   static String _date(dynamic v) {
     if (v is! Timestamp) return '';
     final d = v.toDate();
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   }
+
+  void _abrirDetalhe(BuildContext context) => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => NoticiaDetalhePage(news: news, user: user, onDeleted: onDelete),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -712,68 +772,69 @@ class NewsCard extends StatelessWidget {
       if (firstText([news['autor']]).isNotEmpty) firstText([news['autor']]),
       if (_date(news['criado_em']).isNotEmpty) _date(news['criado_em']),
     ].join(' • ');
-    final galeria = [
-      for (final e in (news['imagens'] is List ? news['imagens'] as List : const []))
-        if (e is Map && firstText([e['url']]).isNotEmpty) e,
-    ];
+
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (capa.isNotEmpty) AspectRatio(aspectRatio: 16 / 9, child: AppImage(capa)),
-          ExpansionTile(
-            title: Text(titulo.isEmpty ? 'Notícia' : titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: resumo.isEmpty ? null : Text(resumo, maxLines: 3, overflow: TextOverflow.ellipsis),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            expandedCrossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (byline.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(byline, style: theme.textTheme.bodySmall),
-                ),
-              if (conteudo.isNotEmpty) Text(conteudo, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
-              for (final img in galeria)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: ColoredBox(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          child: AspectRatio(aspectRatio: 4 / 3, child: AppImage(img['url'].toString(), fit: BoxFit.contain)),
-                        ),
-                      ),
-                      if (firstText([img['legenda']]).isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            firstText([img['legenda']]),
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
-                          ),
-                        ),
-                    ],
+      child: InkWell(
+        onTap: () => _abrirDetalhe(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (capa.isNotEmpty) AspectRatio(aspectRatio: 16 / 9, child: AppImage(capa)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (byline.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(byline, style: theme.textTheme.bodySmall),
+                    ),
+                  Text(
+                    titulo.isEmpty ? 'Notícia' : titulo,
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                ),
-            ],
-          ),
-          if (onEdit != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 4),
-                child: TextButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Editar notícia'),
-                ),
+                  if (resumo.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(resumo, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                  if (resumo.isEmpty && conteudo.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(conteudo, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
               ),
             ),
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => _abrirDetalhe(context),
+                    icon: const Icon(Icons.read_more),
+                    label: const Text('Ver notícia'),
+                  ),
+                  if (onEdit != null)
+                    IconButton(
+                      tooltip: 'Editar notícia',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: onEdit,
+                    ),
+                  if (onDelete != null)
+                    IconButton(
+                      tooltip: 'Excluir notícia',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: onDelete,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -835,7 +896,7 @@ class _GroupCardState extends State<GroupCard> {
                       if (!mounted) return;
                       setState(() => joined = true);
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Você agora é membro deste grupo no Firestore!')),
+                        const SnackBar(content: Text('Você agora é membro deste grupo!')),
                       );
                     } catch (e) {
                       if (!mounted) return;
@@ -913,7 +974,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       );
                       if (!mounted) return;
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Perfil atualizado remotamente no Firestore!')),
+                        const SnackBar(content: Text('Perfil atualizado com sucesso!')),
                       );
                     } catch (e) {
                       if (!mounted) return;
@@ -924,7 +985,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       if (mounted) setState(() => saving = false);
                     }
                   },
-            child: Text(saving ? 'Salvando no Firebase...' : 'Salvar perfil'),
+            child: Text(saving ? 'Salvando...' : 'Salvar perfil'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(

@@ -215,7 +215,7 @@ class _AdminSectionViewState extends State<AdminSectionView> {
         stream: _stream,
         builder: (context, snap) {
           if (snap.hasError) {
-            return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Erro no Firestore: ${snap.error}')));
+            return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Erro ao carregar dados. Verifique sua conexão.')));
           }
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final list = snap.data!;
@@ -460,7 +460,7 @@ class _AdminFormPageState extends State<AdminFormPage> {
                 icon: const Icon(Icons.cloud_upload_outlined),
                 label: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Text(_saving ? 'Salvando no Firebase...' : _editing ? 'Salvar alterações' : 'Publicar'),
+                  child: Text(_saving ? 'Salvando...' : _editing ? 'Salvar alterações' : 'Publicar'),
                 ),
               ),
             ],
