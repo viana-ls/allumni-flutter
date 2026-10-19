@@ -30,3 +30,17 @@ O arquivo `.github/workflows/build-apk.yml` gera o APK automaticamente em uma m�
 ## Observação de segurança
 
 Antes de publicar, a API deve receber autenticação por token (JWT), autorização no servidor e remoção das credenciais padrão de administrador.
+
+## Painel de administrador
+
+Contas admin gerenciam **notícias, vagas, eventos e grupos** direto pelo app (Firestore, projeto `alumni-d1a49`).
+
+1. No console do Firebase, abra `Firestore Database > usuarios > {documento do usuário}`.
+2. Adicione o campo `admin` (tipo **boolean**) com valor `true`.
+3. Entre no app com essa conta: aparece o ícone de escudo na barra superior. Ele abre o painel com uma aba por coleção (adicionar, editar e excluir).
+
+Coleções usadas: `noticias` (`titulo`, `resumo`, `conteudo`, `imagem`, `imagens`, `autor`, `criado_em`), `vagas`, `eventos`, `grupos`.
+
+Imagens de notícia: o projeto não tem Firebase Storage, então a foto escolhida da galeria é redimensionada e salva no próprio documento (data URI, máx. 600 KB). Também é possível usar o link de uma imagem. Admins veem o botão **Editar notícia** em cada notícia da tela Início.
+
+> **Segurança:** o app usa login próprio na coleção `usuarios` (sem Firebase Auth) e o `firestore.rules` atual libera leitura/escrita para todos. Portanto o flag `admin` só esconde o painel na interface; não impede escrita direta no Firestore. Para proteger de verdade, migre o login para Firebase Auth e restrinja as regras por `request.auth`.

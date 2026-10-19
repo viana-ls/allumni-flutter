@@ -1,3 +1,5 @@
+import 'app_image.dart';
+import 'admin.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -94,6 +96,42 @@ class FirebaseDb {
       (s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
     );
   }
+
+  // Notícias
+  static Stream<List<Map<String, dynamic>>> streamNoticias() {
+    return _db.collection('noticias').snapshots().map((s) {
+      final list = s.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      // Mais recentes primeiro. `criado_em` nulo = gravação local ainda pendente (a mais nova).
+      int millis(dynamic v) => v is Timestamp ? v.millisecondsSinceEpoch : DateTime.now().millisecondsSinceEpoch;
+      list.sort((a, b) => millis(b['criado_em']).compareTo(millis(a['criado_em'])));
+      return list;
+    });
+  }
+
+  // Administração (o acesso é restrito na UI por `usuarios/{id}.admin == true`)
+  static Future<Map<String, dynamic>?> getUsuario(String usuarioId) async {
+    final doc = await _db.collection('usuarios').doc(usuarioId).get();
+    if (!doc.exists) return null;
+    return _cleanUser(doc.id, doc.data() ?? {});
+  }
+
+  /// Cria (`id == null`) ou atualiza um documento de [colecao].
+  /// [aoCriar] são campos gravados apenas na criação.
+  static Future<void> salvarItem(
+    String colecao,
+    String? id,
+    Map<String, dynamic> dados, {
+    Map<String, dynamic> aoCriar = const {},
+  }) async {
+    final col = _db.collection(colecao);
+    if (id == null) {
+      await col.add({...dados, ...aoCriar, 'criado_em': FieldValue.serverTimestamp()});
+    } else {
+      await col.doc(id).update({...dados, 'atualizado_em': FieldValue.serverTimestamp()});
+    }
+  }
+
+  static Future<void> excluirItem(String colecao, String id) => _db.collection(colecao).doc(id).delete();
 
   // Vagas
   static Stream<List<Map<String, dynamic>>> streamVagas() {
@@ -199,8 +237,20 @@ class _BootstrapPageState extends State<BootstrapPage> {
   @override
   void initState() {
     super.initState();
-    Session.read().then((v) {
-      if (mounted) setState(() => user = v);
+    Session.read().then((cached) async {
+      if (!mounted) return;
+      setState(() => user = cached);
+      final id = cached?['id']?.toString() ?? '';
+      if (id.isEmpty) return;
+      // Sincroniza com o Firestore para refletir promoção/remoção de admin feita no console.
+      try {
+        final fresh = await FirebaseDb.getUsuario(id);
+        if (fresh == null || !mounted) return;
+        await Session.save(fresh);
+        if (mounted) setState(() => user = fresh);
+      } catch (_) {
+        // Offline: mantém a sessão em cache.
+      }
     });
   }
 
@@ -404,6 +454,14 @@ class _ShellPageState extends State<ShellPage> {
         title: const Text('Allumni'),
         centerTitle: false,
         actions: [
+          if (isAdmin(widget.user))
+            IconButton(
+              tooltip: 'Painel do administrador',
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => AdminPage(user: widget.user)),
+              ),
+            ),
           IconButton(
             tooltip: 'Firebase Conectado',
             icon: const Icon(Icons.cloud_done_rounded, color: Colors.green),
@@ -443,6 +501,22 @@ class HomeTab extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           const Text('Sua comunidade, eventos e oportunidades em tempo real com Firebase.'),
+          const SizedBox(height: 20),
+          FirestoreStreamList(
+            title: 'Notícias',
+            stream: FirebaseDb.streamNoticias(),
+            empty: 'Nenhuma notícia publicada ainda.',
+            builder: (x) => NewsCard(
+              news: x,
+              onEdit: isAdmin(user)
+                  ? () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => AdminFormPage(section: adminSections.first, admin: user, item: x),
+                        ),
+                      )
+                  : null,
+            ),
+          ),
           const SizedBox(height: 20),
           FirestoreStreamList(
             title: 'Próximos eventos',
@@ -533,8 +607,17 @@ class _JobCardState extends State<JobCard> {
         child: ListTile(
           leading: const CircleAvatar(child: Icon(Icons.work)),
           title: Text(widget.job['titulo'] ?? 'Vaga'),
-          subtitle: Text('${widget.job['empresa'] ?? ''}\n${widget.job['localizacao'] ?? ''}'),
-          isThreeLine: true,
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${widget.job['empresa'] ?? ''}\n${widget.job['localizacao'] ?? ''}'),
+              if (firstText([widget.job['descricao']]).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(firstText([widget.job['descricao']]), maxLines: 3, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+          ),
           trailing: FilledButton.tonal(
             onPressed: (applied || loading)
                 ? null
@@ -590,10 +673,110 @@ class EventCard extends StatelessWidget {
         child: ListTile(
           leading: const CircleAvatar(child: Icon(Icons.event)),
           title: Text(event['titulo'] ?? 'Evento'),
-          subtitle: Text('${event['resumo'] ?? event['descricao'] ?? ''}\n${event['data_formatada'] ?? event['data_evento'] ?? ''}'),
+          subtitle: Text('${firstText([event['resumo'], event['descricao']])}\n${firstText([event['data_formatada'], event['data_evento']])}'),
           isThreeLine: true,
         ),
       );
+}
+
+/// Primeiro valor não vazio (admin pode salvar campos opcionais como `''`).
+String firstText(List<dynamic> values) {
+  for (final v in values) {
+    final s = v?.toString().trim() ?? '';
+    if (s.isNotEmpty) return s;
+  }
+  return '';
+}
+
+class NewsCard extends StatelessWidget {
+  const NewsCard({super.key, required this.news, this.onEdit});
+  final Map<String, dynamic> news;
+
+  /// Presente apenas para admins: mostra o botão "Editar notícia".
+  final VoidCallback? onEdit;
+
+  static String _date(dynamic v) {
+    if (v is! Timestamp) return '';
+    final d = v.toDate();
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final titulo = firstText([news['titulo']]);
+    final resumo = firstText([news['resumo']]);
+    final conteudo = firstText([news['conteudo']]);
+    final capa = firstText([news['imagem']]);
+    final byline = [
+      if (firstText([news['autor']]).isNotEmpty) firstText([news['autor']]),
+      if (_date(news['criado_em']).isNotEmpty) _date(news['criado_em']),
+    ].join(' • ');
+    final galeria = [
+      for (final e in (news['imagens'] is List ? news['imagens'] as List : const []))
+        if (e is Map && firstText([e['url']]).isNotEmpty) e,
+    ];
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (capa.isNotEmpty) AspectRatio(aspectRatio: 16 / 9, child: AppImage(capa)),
+          ExpansionTile(
+            title: Text(titulo.isEmpty ? 'Notícia' : titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: resumo.isEmpty ? null : Text(resumo, maxLines: 3, overflow: TextOverflow.ellipsis),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (byline.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(byline, style: theme.textTheme.bodySmall),
+                ),
+              if (conteudo.isNotEmpty) Text(conteudo, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
+              for (final img in galeria)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: ColoredBox(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: AspectRatio(aspectRatio: 4 / 3, child: AppImage(img['url'].toString(), fit: BoxFit.contain)),
+                        ),
+                      ),
+                      if (firstText([img['legenda']]).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            firstText([img['legenda']]),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (onEdit != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8, bottom: 4),
+                child: TextButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Editar notícia'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class GroupsTab extends StatelessWidget {
